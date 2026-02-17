@@ -1,0 +1,8 @@
+backend/uploads/
+backend/facecensor.db
+frontend/.next/
+frontend/node_modules/
+frontend/.env.local
+*.pyc
+__pycache__/
+.env
