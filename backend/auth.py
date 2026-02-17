@@ -13,7 +13,8 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+# auto_error=False so we can also accept token via ?_t= query param (for <img> src)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -33,24 +34,25 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def get_current_user(
     request: Request,
-    token: str = Depends(oauth2_scheme),
+    token: Optional[str] = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ) -> models.User:
-    # Also accept token via query param for image src URLs
-    query_token = request.query_params.get("_t")
-    resolved_token = query_token or token
+    # Accept token from Authorization: Bearer header OR ?_t= query param (for <img> src)
+    resolved_token = token or request.query_params.get("_t")
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not resolved_token:
+        raise credentials_exception
     try:
         payload = jwt.decode(resolved_token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: int = int(payload.get("sub"))
         if user_id is None:
             raise credentials_exception
-    except JWTError:
+    except (JWTError, TypeError, ValueError):
         raise credentials_exception
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
